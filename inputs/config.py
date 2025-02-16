@@ -11,6 +11,9 @@ TRADE_AMOUNT = [0, 0]  # (works nearly from +-20%), minimum (5$) and maximum amo
 ALLOWED_ASSETS = ["SOL_USDC", "PYTH_USDC", "JTO_USDC", "HNT_USDC", "MOBILE_USDC", "BONK_USDC", "WIF_USDC", "JUP_USDC",
                   "RENDER_USDC", "WEN_USDC", "BTC_USDC", "W_USDC", "TNSR_USDC", "PRCL_USDC", "SHFL_SDC", "SONIC_USDC"]
 
+TAKE_PROFIT = 1.0  # กำไรเป้าหมาย (ในเปอร์เซ็นต์)
+STOP_LOSS = 0.5    # ขาดทุนสูงสุดที่ยอมรับได้ (ในเปอร์เซ็นต์)
+
 # Volatility moment
 # DEPTH of limit order to trade as market order
 DEPTH = 3  # 1-20, optimal - 3-5, recommend up to 10, bigger depth = better market order but more slippage
