@@ -98,6 +98,8 @@ class BackpackTrade(Backpack):
         self.current_volume: float = 0
         self.amount_usd = 0
         self.min_balance_usd = 5
+        self.take_profit = 0.2
+        self.stop_loss = 1.2
 
     async def start_trading(self, pairs: list[str]):
         try:
@@ -114,66 +116,68 @@ class BackpackTrade(Backpack):
         logger.info(f"Finished! Traded volume ~ {self.current_volume:.2f}$")
 
     async def check_profit_loss(self, symbol: str, entry_price: float, current_price: float):
-    """
-    ตรวจสอบเงื่อนไข Take Profit และ Stop Loss
-    :param symbol: คู่เทรด (เช่น SOL_USDC)
-    :param entry_price: ราคาที่เข้าซื้อ
-    :param current_price: ราคาปัจจุบัน
-    :return: True หากถึงเงื่อนไข Take Profit หรือ Stop Loss
-    """
-    profit_percent = ((current_price - entry_price) / entry_price) * 100
-    loss_percent = ((entry_price - current_price) / entry_price) * 100
+        """
+        ตรวจสอบเงื่อนไข Take Profit และ Stop Loss
+        :param symbol: คู่เทรด (เช่น SOL_USDC)
+        :param entry_price: ราคาที่เข้าซื้อ
+        :param current_price: ราคาปัจจุบัน
+        :return: True หากถึงเงื่อนไข Take Profit หรือ Stop Loss
+        """
+        entry_price = float(entry_price)  # แปลง entry_price เป็น float
+        current_price = float(current_price)  # แปลง current_price เป็น float
+        profit_percent = ((current_price - entry_price) / entry_price) * 100
+        loss_percent = ((entry_price - current_price) / entry_price) * 100
 
-    if profit_percent >= self.take_profit:
-        logger.info(f"Take Profit reached! Selling {symbol} at {current_price} (Profit: {profit_percent:.2f}%)")
-        return True
-    elif loss_percent >= self.stop_loss:
-        logger.info(f"Stop Loss triggered! Selling {symbol} at {current_price} (Loss: {loss_percent:.2f}%)")
-        return True
+        if profit_percent >= self.take_profit:
+            logger.info(f"Take Profit reached! Selling {symbol} at {current_price} (Profit: {profit_percent:.2f}%)")
+            return True
+        elif loss_percent >= self.stop_loss:
+            logger.info(f"Stop Loss triggered! Selling {symbol} at {current_price} (Loss: {loss_percent:.2f}%)")
+            return True
 
-    return False
+        return False
 
-async def trade_worker(self, pair: str):
-    print()
+    async def trade_worker(self, pair: str):
+        print()
 
-    await self.custom_delay(delays=self.trade_delay)
-    entry_price = await self.buy(pair)  # เก็บราคาที่เข้าซื้อ
-
-    while True:
         await self.custom_delay(delays=self.trade_delay)
-        current_price = await self.get_market_price(pair, 'sell', DEPTH)  # ดึงราคาปัจจุบัน
+        entry_price = await self.buy(pair)  # เก็บราคาที่เข้าซื้อ
 
-        # ตรวจสอบเงื่อนไข Take Profit และ Stop Loss
-        if await self.check_profit_loss(pair, entry_price, current_price):
-            await self.sell(pair)
-            break
+        while True:
+            await self.custom_delay(delays=self.trade_delay)
+            current_price = await self.get_market_price(pair, 'sell', DEPTH)  # ดึงราคาปัจจุบัน
 
-    await self.custom_delay(self.deal_delay)
+            # ตรวจสอบเงื่อนไข Take Profit และ Stop Loss
+            if await self.check_profit_loss(pair, entry_price, current_price):
+                await self.sell(pair)
+                break
 
-    if self.needed_volume and self.current_volume > self.needed_volume:
-        return True
+        await self.custom_delay(self.deal_delay)
 
-   @retry(stop=stop_after_attempt(10), wait=wait_random(5, 7), reraise=True,
-       retry=retry_if_exception_type(FokOrderException))
-async def buy(self, symbol: str):
-    side = 'buy'
-    token = symbol.split('_')[1]
-    price, balance = await self.get_trade_info(symbol, side, token)
+        if self.needed_volume and self.current_volume > self.needed_volume:
+            return True
 
-    amount = str(float(balance) / float(price))
+    @retry(stop=stop_after_attempt(10), wait=wait_random(5, 7), reraise=True,
+           retry=retry_if_exception_type(FokOrderException))
+    async def buy(self, symbol: str):
+        side = 'buy'
+        token = symbol.split('_')[1]
+        price, balance = await self.get_trade_info(symbol, side, token)
 
-    await self.trade(symbol, amount, side, price)
-    return float(price)  # คืนค่าราคาที่เข้าซื้อ
+        amount = str(float(balance) / float(price))
 
-@retry(stop=stop_after_attempt(10), wait=wait_random(5, 7), reraise=True,
-       retry=retry_if_exception_type(FokOrderException))
-async def sell(self, symbol: str, use_global_options: bool = True):
-    side = 'sell'
-    token = symbol.split('_')[0]
-    price, amount = await self.get_trade_info(symbol, side, token, use_global_options)
+        await self.trade(symbol, amount, side, price)
+        return float(price)  # คืนค่าราคาที่เข้าซื้อ
 
-    await self.trade(symbol, amount, side, price)
-    return float(price)  # คืนค่าราคาที่ขาย
+    @retry(stop=stop_after_attempt(10), wait=wait_random(5, 7), reraise=True,
+           retry=retry_if_exception_type(FokOrderException))
+    async def sell(self, symbol: str, use_global_options: bool = True):
+        side = 'sell'
+        token = symbol.split('_')[0]
+        price, amount = await self.get_trade_info(symbol, side, token, use_global_options)
+
+        await self.trade(symbol, amount, side, price)
+        return float(price)  # คืนค่าราคาที่ขาย
     
     @retry(stop=stop_after_attempt(7), wait=wait_random(2, 5),
            before_sleep=lambda e: logger.info(f"Get Balance. Retrying... | {e}"),
