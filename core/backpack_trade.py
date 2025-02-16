@@ -153,26 +153,28 @@ async def trade_worker(self, pair: str):
     if self.needed_volume and self.current_volume > self.needed_volume:
         return True
 
-    @retry(stop=stop_after_attempt(10), wait=wait_random(5, 7), reraise=True,
-           retry=retry_if_exception_type(FokOrderException))
-    async def buy(self, symbol: str):
-        side = 'buy'
-        token = symbol.split('_')[1]
-        price, balance = await self.get_trade_info(symbol, side, token)
+   @retry(stop=stop_after_attempt(10), wait=wait_random(5, 7), reraise=True,
+       retry=retry_if_exception_type(FokOrderException))
+async def buy(self, symbol: str):
+    side = 'buy'
+    token = symbol.split('_')[1]
+    price, balance = await self.get_trade_info(symbol, side, token)
 
-        amount = str(float(balance) / float(price))
+    amount = str(float(balance) / float(price))
 
-        await self.trade(symbol, amount, side, price)
+    await self.trade(symbol, amount, side, price)
+    return float(price)  # คืนค่าราคาที่เข้าซื้อ
 
-    @retry(stop=stop_after_attempt(10), wait=wait_random(5, 7), reraise=True,
-           retry=retry_if_exception_type(FokOrderException))
-    async def sell(self, symbol: str, use_global_options: bool = True):
-        side = 'sell'
-        token = symbol.split('_')[0]
-        price, amount = await self.get_trade_info(symbol, side, token, use_global_options)
+@retry(stop=stop_after_attempt(10), wait=wait_random(5, 7), reraise=True,
+       retry=retry_if_exception_type(FokOrderException))
+async def sell(self, symbol: str, use_global_options: bool = True):
+    side = 'sell'
+    token = symbol.split('_')[0]
+    price, amount = await self.get_trade_info(symbol, side, token, use_global_options)
 
-        return await self.trade(symbol, amount, side, price)
-
+    await self.trade(symbol, amount, side, price)
+    return float(price)  # คืนค่าราคาที่ขาย
+    
     @retry(stop=stop_after_attempt(7), wait=wait_random(2, 5),
            before_sleep=lambda e: logger.info(f"Get Balance. Retrying... | {e}"),
            reraise=True)
