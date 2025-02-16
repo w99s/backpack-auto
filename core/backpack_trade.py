@@ -113,19 +113,45 @@ class BackpackTrade(Backpack):
 
         logger.info(f"Finished! Traded volume ~ {self.current_volume:.2f}$")
 
-    async def trade_worker(self, pair: str):
-        print()
+    async def check_profit_loss(self, symbol: str, entry_price: float, current_price: float):
+    """
+    ตรวจสอบเงื่อนไข Take Profit และ Stop Loss
+    :param symbol: คู่เทรด (เช่น SOL_USDC)
+    :param entry_price: ราคาที่เข้าซื้อ
+    :param current_price: ราคาปัจจุบัน
+    :return: True หากถึงเงื่อนไข Take Profit หรือ Stop Loss
+    """
+    profit_percent = ((current_price - entry_price) / entry_price) * 100
+    loss_percent = ((entry_price - current_price) / entry_price) * 100
 
+    if profit_percent >= self.take_profit:
+        logger.info(f"Take Profit reached! Selling {symbol} at {current_price} (Profit: {profit_percent:.2f}%)")
+        return True
+    elif loss_percent >= self.stop_loss:
+        logger.info(f"Stop Loss triggered! Selling {symbol} at {current_price} (Loss: {loss_percent:.2f}%)")
+        return True
+
+    return False
+
+async def trade_worker(self, pair: str):
+    print()
+
+    await self.custom_delay(delays=self.trade_delay)
+    entry_price = await self.buy(pair)  # เก็บราคาที่เข้าซื้อ
+
+    while True:
         await self.custom_delay(delays=self.trade_delay)
-        await self.buy(pair)
+        current_price = await self.get_market_price(pair, 'sell', DEPTH)  # ดึงราคาปัจจุบัน
 
-        await self.custom_delay(delays=self.trade_delay)
-        await self.sell(pair)
+        # ตรวจสอบเงื่อนไข Take Profit และ Stop Loss
+        if await self.check_profit_loss(pair, entry_price, current_price):
+            await self.sell(pair)
+            break
 
-        await self.custom_delay(self.deal_delay)
+    await self.custom_delay(self.deal_delay)
 
-        if self.needed_volume and self.current_volume > self.needed_volume:
-            return True
+    if self.needed_volume and self.current_volume > self.needed_volume:
+        return True
 
     @retry(stop=stop_after_attempt(10), wait=wait_random(5, 7), reraise=True,
            retry=retry_if_exception_type(FokOrderException))
